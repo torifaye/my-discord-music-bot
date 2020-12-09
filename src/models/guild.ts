@@ -1,4 +1,4 @@
-import { StreamDispatcher, VoiceConnection } from "discord.js";
+import { Message, StreamDispatcher, VoiceConnection } from "discord.js";
 import { injectable } from "inversify";
 import mongoose, { Document, mongo, Schema } from "mongoose";
 import { YoutubeOembedResponse } from "./youtube";
@@ -10,6 +10,7 @@ export class Server {
     public dispatcher?: StreamDispatcher;
     public isPlayingSong: boolean = false;
     public volume: number;
+    public songUpdateMessage: Message;
     
     constructor(name: string) {
         this.name = name;

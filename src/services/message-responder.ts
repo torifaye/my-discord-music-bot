@@ -84,7 +84,7 @@ export class MessageResponder {
         switch (type) {
             case 'track':
                 const track = await this.spotifyService.getTrack(uri);
-                const song = await this.prepareSong(`${track.artists[0].name} - ${track.name}`, message);
+                const song = await this.prepareSong(`${track.artists[0].name} - ${track.name}  (Audio)`, message);
                 if (!server.isPlayingSong) {
                     this.playSong(message, server);
                 } else {
@@ -93,10 +93,15 @@ export class MessageResponder {
                 break;
             case 'album':
                 const album = await this.spotifyService.getAlbum(uri);
-                const albumSearchQueries = album.map(song => `${song.artists[0].name} - ${song.name}`);
-                albumSearchQueries.forEach(async (query) => {
-                    this.prepareSong(query, message);
-                });
+                const albumSearchQueries = album.map(song => `${song.artists[0].name} - ${song.name} (Audio)`);
+
+                await this.prepareSong(albumSearchQueries[0], message);
+
+                albumSearchQueries.slice(1).reduce(async (promise, query) => {
+                    await promise;
+                    await this.prepareSong(query, message);
+                }, Promise.resolve());
+
                 if (!server.isPlayingSong) {
                     this.playSong(message, server);
                 } else {
@@ -104,10 +109,15 @@ export class MessageResponder {
                 }
             case 'playlist':
                 const playlist = await this.spotifyService.getPlaylist(uri);
-                const playlistSearchQueries = playlist.map(song => `${song.artists[0].name} - ${song.name}`);
-                playlistSearchQueries.forEach(async (query) => {
-                    this.prepareSong(query, message);
-                });
+                const playlistSearchQueries = playlist.map(song => `${song.artists[0].name} - ${song.name}  (Audio)`);
+
+                await this.prepareSong(playlistSearchQueries[0], message);
+
+                playlistSearchQueries.slice(1).reduce(async (promise, query) => {
+                    await promise;
+                    await this.prepareSong(query, message);
+                }, Promise.resolve());
+
                 if (!server.isPlayingSong) {
                     this.playSong(message, server);
                 } else {
@@ -134,10 +144,10 @@ export class MessageResponder {
         return metadata;
     }
 
-    private async playSong(message: Message, server: Server) {
+    private async playSong(message: Message, server: Server): Promise<Message> {
         const queue = await this.queueService.getQueue(message.guild.name);
         server.dispatcher = server.connection.play(ytdl(queue[0].video_url, { filter: 'audioonly' }));
-        message.reply(`Now playing **${queue[0].title}**`);
+        await message.channel.send(`Now playing **${queue[0].title}**`);
         server.isPlayingSong = true;
         server.dispatcher.on('finish', async () => {
             await this.queueService.shiftQueue(message.guild.name);
@@ -215,5 +225,11 @@ export class MessageResponder {
 
     private tokenize(input: string): Array<string> {
         return input.split(/[~ \t]/).slice(1);
+    }
+
+    private sleep(ms: number) {
+        return new Promise((resolve) => {
+            setTimeout(resolve, ms);
+        })
     }
 }

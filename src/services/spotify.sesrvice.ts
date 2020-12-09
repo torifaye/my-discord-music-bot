@@ -11,13 +11,8 @@ interface TrackResponse {
 }
 
 interface PaginatedTracklistResponse {
-    items: { track: TrackResponse }[];
+    items: TrackResponse[];
     next: string;
-}
-
-interface TrackInfo {
-    artist: string;
-    name: string;
 }
 
 @injectable()
@@ -51,7 +46,7 @@ export class SpotifyService {
             }
         })).data;
 
-        tracks.items.forEach(track => results.push(track.track));
+        tracks.items.forEach(track => results.push(track));
 
         while (tracks.next != null) {
             tracks = (await Axios.get<PaginatedTracklistResponse>(tracks.next, {
@@ -60,7 +55,7 @@ export class SpotifyService {
                 }
             })).data;
 
-            tracks.items.forEach(track => results.push(track.track));
+            tracks.items.forEach(track => results.push(track));
         }
 
         return results;
@@ -79,7 +74,7 @@ export class SpotifyService {
             }
         })).data;
 
-        tracks.items.forEach(track => results.push(track.track));
+        tracks.items.forEach(track => results.push(track));
 
         while (tracks.next != null) {
             tracks = (await Axios.get<PaginatedTracklistResponse>(tracks.next, {
@@ -88,7 +83,7 @@ export class SpotifyService {
                 }
             })).data;
 
-            tracks.items.forEach(track => results.push(track.track));
+            tracks.items.forEach(track => results.push(track));
         }
 
         return results;
