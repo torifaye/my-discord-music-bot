@@ -1,4 +1,4 @@
-import { Client, Message } from 'discord.js';
+import { Client, Emoji, Message } from 'discord.js';
 import { inject, injectable } from 'inversify';
 import ytdl from 'ytdl-core';
 import Axios from 'axios';
@@ -34,6 +34,18 @@ export class MessageResponder {
                 return this.handleVolume(message, server);
             case 'clear':
                 return this.handleClear(message);
+            case 'pause':
+                if (!server.dispatcher.paused) {
+                    server.dispatcher.pause();
+                    await message.react('🖐️');
+                }
+                break;
+            case 'resume':
+                if (server.dispatcher.paused) {
+                    server.dispatcher.resume();
+                    await message.react('👌');
+                }
+                break;
             case 'skip':
                 server.dispatcher.end();
                 break;
@@ -84,7 +96,7 @@ export class MessageResponder {
         switch (type) {
             case 'track':
                 const track = await this.spotifyService.getTrack(uri);
-                const song = await this.prepareSong(`${track.artists[0].name} - ${track.name}  (Audio)`, message);
+                const song = await this.prepareSong(`${track.artists[0].name} - ${track.name}`, message);
                 if (!server.isPlayingSong) {
                     this.playSong(message, server);
                 } else {
@@ -93,7 +105,7 @@ export class MessageResponder {
                 break;
             case 'album':
                 const album = await this.spotifyService.getAlbum(uri);
-                const albumSearchQueries = album.map(song => `${song.artists[0].name} - ${song.name} (Audio)`);
+                const albumSearchQueries = album.map(song => `${song.artists[0].name} - ${song.name}`);
 
                 await this.prepareSong(albumSearchQueries[0], message);
 
@@ -109,7 +121,7 @@ export class MessageResponder {
                 }
             case 'playlist':
                 const playlist = await this.spotifyService.getPlaylist(uri);
-                const playlistSearchQueries = playlist.map(song => `${song.artists[0].name} - ${song.name}  (Audio)`);
+                const playlistSearchQueries = playlist.map(song => `${song.artists[0].name} - ${song.name}`);
 
                 await this.prepareSong(playlistSearchQueries[0], message);
 
@@ -144,7 +156,7 @@ export class MessageResponder {
         return metadata;
     }
 
-    private async playSong(message: Message, server: Server): Promise<Message> {
+    private async playSong(message: Message, server: Server) {
         const queue = await this.queueService.getQueue(message.guild.name);
         server.dispatcher = server.connection.play(ytdl(queue[0].video_url, { filter: 'audioonly' }));
         await message.channel.send(`Now playing **${queue[0].title}**`);
