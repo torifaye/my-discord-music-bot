@@ -1,20 +1,26 @@
-import { Message, StreamDispatcher, VoiceConnection } from "discord.js";
+import { StreamDispatcher, VoiceConnection } from "discord.js";
 import { injectable } from "inversify";
-import mongoose, { Document, mongo, Schema } from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
 import { YoutubeOembedResponse } from "./youtube";
 
 @injectable()
 export class Server {
     public name: string;
+    public isPlayingSong: boolean;
+    public isLooping: boolean;
+    public queue: Array<YoutubeOembedResponse>;
+    public songIndex: number;
+    public volume: number;
     public connection?: VoiceConnection;
     public dispatcher?: StreamDispatcher;
-    public isPlayingSong: boolean = false;
-    public volume: number;
-    public songUpdateMessage: Message;
     
     constructor(name: string) {
         this.name = name;
         this.volume = 100;
+        this.isPlayingSong = false;
+        this.songIndex = 0;
+        this.isLooping = false;
+        this.queue = new Array<YoutubeOembedResponse>();
     }
 }
 

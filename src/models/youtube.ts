@@ -13,4 +13,6 @@ export interface YoutubeOembedResponse {
     version: string;
     author_url: string;
     video_url?: string;
+    added_by?: string;
+    song_link?: string;
 }

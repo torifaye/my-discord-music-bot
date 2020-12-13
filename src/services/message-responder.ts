@@ -1,247 +1,333 @@
-import { Client, Emoji, Message } from 'discord.js';
-import { inject, injectable } from 'inversify';
-import ytdl from 'ytdl-core';
-import Axios from 'axios';
-import { YoutubeOembedResponse } from '../models/youtube';
-import { TYPES } from '../types';
-import { QueueService } from './queue.service';
-import { Server } from '../models/guild';
-import { SpotifyService } from './spotify.sesrvice';
-import { YoutubeService } from './youtube.service';
+import { Client, Emoji, Message, MessageEmbed, MessageReaction } from "discord.js";
+import { inject, injectable } from "inversify";
+import ytdl from "ytdl-core";
+import Axios from "axios";
+import { YoutubeOembedResponse } from "../models/youtube";
+import { TYPES } from "../types";
+import { QueueService } from "./queue.service";
+import { Server } from "../models/guild";
+import { SpotifyService, TrackResponse } from "./spotify.sesrvice";
+import { YoutubeService } from "./youtube.service";
 
 @injectable()
 export class MessageResponder {
-    private readonly urlRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/;
-    private readonly youtubeRegex = /(https:\/\/www.youtube.com\/watch\?v=.*|https:\/\/youtu.be\/.*)/;
-    private readonly spotifyRegex = /https:\/\/open.spotify.com\/(track|album|playlist)\/(.+)\?si=.+/;
-    private readonly volumeRegex = /(?:[-+]?([0-9]*\.[0-9]+|[0-9]+)|show)/;
+  private readonly urlRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/;
+  private readonly youtubeRegex = /(https:\/\/www.youtube.com\/watch\?v=.*|https:\/\/youtu.be\/.*)/;
+  private readonly spotifyRegex = /https:\/\/open.spotify.com\/(track|album|playlist)\/(.+)\?si=.+/;
+  private readonly volumeRegex = /(?:[-+]?([0-9]*\.[0-9]+|[0-9]+)|show)/;
 
-    constructor(
-        @inject(TYPES.QueueService) private queueService: QueueService,
-        @inject(TYPES.SpotifyService) private spotifyService: SpotifyService,
-        @inject(TYPES.YoutubeService) private youtubeService: YoutubeService) {
-    }
+  constructor(
+    @inject(TYPES.QueueService) private queueService: QueueService,
+    @inject(TYPES.SpotifyService) private spotifyService: SpotifyService,
+    @inject(TYPES.YoutubeService) private youtubeService: YoutubeService
+  ) {}
 
-    public async handle(message: Message, server: Server): Promise<Message | Message[]> {
-        const [command, ...args] = this.tokenize(message.content);
-        switch (command) {
-            case 'play':
-                return this.handlePlay(args, message, server);
-            case 'queue':
-                return this.handleQueueView(message);
-            case 'vol':
-            case 'volume':
-                return this.handleVolume(message, server);
-            case 'clear':
-                return this.handleClear(message);
-            case 'pause':
-                if (!server.dispatcher.paused) {
-                    server.dispatcher.pause();
-                    await message.react('🖐️');
-                }
-                break;
-            case 'resume':
-                if (server.dispatcher.paused) {
-                    server.dispatcher.resume();
-                    await message.react('👌');
-                }
-                break;
-            case 'skip':
-                server.dispatcher.end();
-                break;
-            case 'leave':
-                return this.handleLeave(message, server);
-            default:
-                return;
-        }
+  public async handle(message: Message, server: Server): Promise<Message | Message[] | MessageReaction> {
+    const [command, ...args] = this.tokenize(message.content);
+    switch (command) {
+      case "play":
+        return this.handlePlay(args, message, server);
+      case "queue":
+        return this.handleQueueView(message, server);
+      case "vol":
+      case "volume":
+        return this.handleVolume(message, server);
+      case "loop":
+        return this.handleLoop(message, server);
+      case "clear":
+        return this.handleClear(message, server);
+      case "pause":
+        return this.handlePause(message, server);
+      case "resume":
+        return this.handleResume(message, server);
+      case "skip":
+        return this.handleSkip(message, server);
+      case "leave":
+        return this.handleLeave(message, server);
+      default:
         return;
     }
+  }
 
-    private async handlePlay(args: string[], message: Message, server: Server): Promise<Message> {
-        if (message.member.voice.channel) {
-            server.connection = await message.member.voice.channel.join();
-            server.connection.voice.setSelfDeaf(true);
-            if (args.length === 0) {
-                return message.channel.send('Invalid input provided, please try again');
-            } else {
-                if (args[0].match(this.urlRegex)) {
-                    if (args[0].match(this.youtubeRegex)) {
-                        return this.handleYoutube(message, server);
-                    } else if (args[0].match(this.spotifyRegex)) {
-                        return this.handleSpotify(args[0], message, server);
-                    }
-                } else {
-                    return this.handlePlainInput(args, message, server);
-                }
-            }
+  private async handlePlay(args: string[], message: Message, server: Server): Promise<Message> {
+    if (message.member.voice.channel) {
+      if (!server.connection) {
+        server.connection = await message.member.voice.channel.join();
+        server.connection.voice.setSelfDeaf(true);
+      }
+      if (args.length === 0) {
+        return message.channel.send("Invalid input provided, please try again");
+      } else {
+        if (args[0].match(this.urlRegex)) {
+          if (args[0].match(this.youtubeRegex)) {
+            return this.handleYoutube(message, server);
+          } else if (args[0].match(this.spotifyRegex)) {
+            return this.handleSpotify(args[0], message, server);
+          }
         } else {
-            return message.reply('You must be in a voice channel to use notorious-music-bot');
+          return this.handlePlainInput(args, message, server);
         }
+      }
+    } else {
+      return message.reply("You must be in a voice channel to use notorious-music-bot");
     }
+  }
 
-    private async handleYoutube(message: Message, server: Server): Promise<Message> {
-        const [_input, url, ...rest] = this.youtubeRegex.exec(message.content);
-        const response = (await Axios.get<YoutubeOembedResponse>(`https://www.youtube.com/oembed`, { params: { url, format: "json" } })).data;
-        response.video_url = url;
-        await this.queueService.addToQueue(message.guild.name, response);
+  private async handleQueueView(message: Message, server: Server): Promise<Message> {
+    if (message.member.voice.channel) {
+      if (server.queue.length > 0) {
+        const before = server.queue
+          .slice(0, server.songIndex)
+          .map((info, index) => `${index + 1}) ${info.title}\n`)
+          .join("");
+        const current = server.queue
+          .slice(server.songIndex, server.songIndex + 1)
+          .map((info) => `**${server.songIndex + 1}) ${info.title} <--- Now Playing**\n`)
+          .join("");
+        const after = server.queue
+          .slice(server.songIndex + 1)
+          .map((info, index) => `${server.songIndex + index + 2}) ${info.title}\n`)
+          .join("");
+        const response = new MessageEmbed()
+          .setColor("#0099ff")
+          .setTitle("Queue")
+          .addField("\u200b", before + current + after, true);
+        return message.channel.send(response);
+      } else {
+        return message.channel.send("No songs in queue!");
+      }
+    } else {
+      return message.reply("You must be in a voice channel to use notorious-music-bot");
+    }
+  }
+
+  private async handleVolume(message: Message, server: Server): Promise<Message> {
+    if (message.member.voice.channel) {
+      const matches = this.volumeRegex.exec(message.content);
+      if (server.dispatcher) {
+        if (isNaN(parseFloat(matches[1]))) {
+          message.channel.send(`The current volume is **${server.volume}**`);
+        } else {
+          const provided = parseInt(matches[1]);
+          if (provided > 200 || provided < 0) {
+            return message.reply("The volume must be a whole number between 0 and 200.");
+          } else {
+            await message.channel.send(`Changing volume from **${server.volume}%** to **${provided}%**`);
+            server.volume = provided;
+            server.dispatcher.setVolume(this.scaleVolume(provided));
+          }
+        }
+      } else {
+        return message.reply("There currently isn't anything playing");
+      }
+    } else {
+      return message.reply("You must be in a voice channel to use notorious-music-bot");
+    }
+  }
+
+  private async handleLoop(message: Message, server: Server): Promise<Message> {
+    if (message.member.voice.channel) {
+      server.isLooping = !server.isLooping;
+      if (server.isLooping) {
+        return await message.channel.send(`Looping **${server.queue.length} songs**`);
+      } else {
+        return await message.channel.send(`Looping turned off`);
+      }
+    } else {
+      return message.reply("You must be in a voice channel to use notorious-music-bot");
+    }
+  }
+
+  private async handleClear(message: Message, server: Server): Promise<Message> {
+    if (message.member.voice.channel) {
+      server.queue = [];
+      return message.channel.send("Cleared queue");
+    } else {
+      return message.reply("You must be in a voice channel to use notorious-music-bot");
+    }
+  }
+
+  private async handlePause(message: Message, server: Server): Promise<Message | MessageReaction> {
+    if (message.member.voice.channel) {
+      if (!server.dispatcher.paused) {
+        server.dispatcher.pause();
+        return await message.react("🖐️");
+      }
+    } else {
+      return message.reply("You must be in a voice channel to use notorious-music-bot");
+    }
+  }
+
+  private async handleResume(message: Message, server: Server): Promise<Message | MessageReaction> {
+    if (message.member.voice.channel) {
+      if (server.dispatcher.paused) {
+        server.dispatcher.resume();
+        return await message.react("👌");
+      }
+    } else {
+      return message.reply("You must be in a voice channel to use notorious-music-bot");
+    }
+  }
+
+  private async handleSkip(message: Message, server: Server) {
+    if (message.member.voice.channel) {
+      server.dispatcher.end();
+    } else {
+      return message.reply("You must be in a voice channel to use notorious-music-bot");
+    }
+  }
+
+  private async handleLeave(message: Message, server: Server): Promise<Message> {
+    if (message.member.voice.channel) {
+      server.dispatcher?.destroy();
+      server.connection?.disconnect();
+      server.isPlayingSong = false;
+      server.volume = 100;
+      this.queueService.clearQueue(message.guild.name);
+      await message.react("<:sadge:772667812790927400>");
+    } else {
+      return message.reply("You must be in a voice channel to use notorious-music-bot");
+    }
+  }
+
+  private async handleYoutube(message: Message, server: Server): Promise<Message> {
+    const [_input, url, ...rest] = this.youtubeRegex.exec(message.content);
+    const metadata = await this.getMetadata(url, message);
+    metadata.song_link = url;
+    server.queue.push(metadata);
+    if (!server.isPlayingSong) {
+      this.playSong(message, server);
+    } else {
+      const response = new MessageEmbed()
+          .setColor("#0099ff")
+          .addField("\u200b", `Added [${metadata.title}](${metadata.song_link}) to queue [<@${metadata.added_by}>]`, true);
+      return await message.channel.send(response);
+    }
+  }
+
+  private async handleSpotify(url: string, message: Message, server: Server): Promise<Message> {
+    const [_input, type, uri] = this.spotifyRegex.exec(url);
+    switch (type) {
+      case "track":
+        const track = await this.spotifyService.getTrack(uri);
+        const song = await this.prepareSong(`${track.artists[0].name} - ${track.name}`, message, server, track);
         if (!server.isPlayingSong) {
-            this.playSong(message, server);
+          this.playSong(message, server);
         } else {
-            return await message.channel.send(`Added **${response.title}** to queue`);
+          return await message.channel.send(`Added [${track.name}](${song.song_link}) to queue [<@${song.added_by}>]`);
         }
-    }
+        break;
+      case "album":
+        const album = await this.spotifyService.getAlbum(uri);
+        const albumSearchQueries = album.map((song) => `${song.artists[0].name} - ${song.name}`);
 
-    private async handleSpotify(url: string, message: Message, server: Server): Promise<Message> {
-        const [_input, type, uri] = this.spotifyRegex.exec(url);
-        switch (type) {
-            case 'track':
-                const track = await this.spotifyService.getTrack(uri);
-                const song = await this.prepareSong(`${track.artists[0].name} - ${track.name}`, message);
-                if (!server.isPlayingSong) {
-                    this.playSong(message, server);
-                } else {
-                    return await message.channel.send(`Added **${song.title}** to queue`);
-                }
-                break;
-            case 'album':
-                const album = await this.spotifyService.getAlbum(uri);
-                const albumSearchQueries = album.map(song => `${song.artists[0].name} - ${song.name}`);
+        await this.prepareSong(albumSearchQueries[0], message, server, album[0]);
 
-                await this.prepareSong(albumSearchQueries[0], message);
+        albumSearchQueries.slice(1).reduce(async (promise, query, index) => {
+          await promise;
+          await this.prepareSong(query, message, server, album[index]);
+        }, Promise.resolve());
 
-                albumSearchQueries.slice(1).reduce(async (promise, query) => {
-                    await promise;
-                    await this.prepareSong(query, message);
-                }, Promise.resolve());
-
-                if (!server.isPlayingSong) {
-                    this.playSong(message, server);
-                } else {
-                    return message.channel.send(`Enqueued **${album.length}** songs.`);
-                }
-            case 'playlist':
-                const playlist = await this.spotifyService.getPlaylist(uri);
-                const playlistSearchQueries = playlist.map(song => `${song.artists[0].name} - ${song.name}`);
-
-                await this.prepareSong(playlistSearchQueries[0], message);
-
-                playlistSearchQueries.slice(1).reduce(async (promise, query) => {
-                    await promise;
-                    await this.prepareSong(query, message);
-                }, Promise.resolve());
-
-                if (!server.isPlayingSong) {
-                    this.playSong(message, server);
-                } else {
-                    return message.channel.send(`Enqueued **${playlist.length}** songs.`);
-                }
-        }
-    }
-
-    private async handlePlainInput(args: string[], message: Message, server: Server): Promise<Message> {
-        const response = await this.prepareSong(args.join(' '), message);
         if (!server.isPlayingSong) {
-            this.playSong(message, server);
+          this.playSong(message, server);
         } else {
-            return await message.channel.send(`Added **${response.title}** to queue`);
+          return message.channel.send(`Enqueued **${album.length}** songs.`);
+        }
+      case "playlist":
+        const playlist = await this.spotifyService.getPlaylist(uri);
+        const playlistSearchQueries = playlist.map((song) => `${song.artists[0].name} - ${song.name}`);
+
+        await this.prepareSong(playlistSearchQueries[0], message, server, playlist[0]);
+
+        playlistSearchQueries.slice(1).reduce(async (promise, query, index) => {
+          await promise;
+          await this.prepareSong(query, message, server, playlist[index]);
+        }, Promise.resolve());
+
+        if (!server.isPlayingSong) {
+          this.playSong(message, server);
+        } else {
+          return message.channel.send(`Enqueued **${playlist.length}** songs.`);
         }
     }
+  }
 
-    private async prepareSong(query: string, message: Message): Promise<YoutubeOembedResponse> {
-        const url = await this.youtubeService.searchForSong(query);
-        console.log({ purpose: 'query_data', query_string: query, song_url: url });
-        const metadata = (await Axios.get<YoutubeOembedResponse>(`https://www.youtube.com/oembed`, { params: { url, format: "json" } })).data;
-        metadata.video_url = url;
-        await this.queueService.addToQueue(message.guild.name, metadata);
-        return metadata;
-    }
-
-    private async playSong(message: Message, server: Server) {
-        const queue = await this.queueService.getQueue(message.guild.name);
-        server.dispatcher = server.connection.play(ytdl(queue[0].video_url, { filter: 'audioonly' }));
-        await message.channel.send(`Now playing **${queue[0].title}**`);
-        server.isPlayingSong = true;
-        server.dispatcher.on('finish', async () => {
-            await this.queueService.shiftQueue(message.guild.name);
-            const updatedQueue = await this.queueService.getQueue(message.guild.name);
-            if (updatedQueue[0]) {
-                this.playSong(message, server);
-            } else {
-                server.isPlayingSong = false;
-            }
-        });
-    }
-
-    private async handleVolume(message: Message, server: Server): Promise<Message> {
-        if (message.member.voice.channel) {
-            const matches = this.volumeRegex.exec(message.content);
-            if (server.dispatcher) {
-                if (isNaN(parseFloat(matches[1]))) {
-                    message.channel.send(`The current volume is **${server.volume}**`);
-                } else {
-                    const provided = parseInt(matches[1]);
-                    if (provided > 200 || provided < 0) {
-                        return message.reply('The volume must be a whole number between 0 and 200.');
-                    } else {
-                        server.dispatcher.setVolume(this.scaleVolume(provided));
-                        return message.channel.send(`Changing volume from **${server.volume}** to **${provided}**`);
-                    }
-                }
-            } else {
-                return message.reply('There currently isn\'t anything playing');
-            }
+  private async playSong(message: Message, server: Server) {
+    const currentSong = server.queue[server.songIndex];
+    server.dispatcher = server.connection.play(ytdl(currentSong.video_url, { filter: "audioonly" }));
+    const response = new MessageEmbed()
+      .setColor("#ffffff")
+      .setTitle("Now Playing")
+      .addField(`\u200b`, `[${currentSong.title}](${currentSong.song_link}) [<@${currentSong.added_by}>]`, true);
+    await message.channel.send(response);
+    server.isPlayingSong = true;
+    server.dispatcher.on("finish", async () => {
+      if (server.isLooping) {
+        if (server.songIndex === server.queue.length - 1) {
+          server.songIndex = 0;
         } else {
-            return message.reply('You must be in a voice channel to use notorious-music-bot');
+          server.songIndex++;
         }
-    }
+      } else {
+        server.queue.shift();
+      }
+      if (server.queue[server.songIndex]) {
+        this.playSong(message, server);
+      } else {
+        server.isPlayingSong = false;
+      }
+    });
+  }
 
-    async handleQueueView(message: Message): Promise<Message> {
-        if (message.member.voice.channel) {
-            const queue = await this.queueService.getQueue(message.guild.name);
-            if (queue.length > 0) {
-                const songs = queue.map((info, index) => `**${index + 1})** ${info.title}`).join('\n');
-                return message.channel.send(songs);
-            } else {
-                return message.channel.send('No songs in queue!');
-            }
-        } else {
-            return message.reply('You must be in a voice channel to use notorious-music-bot');
-        }
+  private async handlePlainInput(args: string[], message: Message, server: Server): Promise<Message> {
+    const response = await this.prepareSong(args.join(" "), message, server, null);
+    if (!server.isPlayingSong) {
+      this.playSong(message, server);
+    } else {
+      return await message.channel.send(`Added [${response.title}](${response.song_link}) to queue [<@${message.author.id}>]`);
     }
+  }
 
-    async handleClear(message: Message): Promise<Message> {
-        if (message.member.voice.channel) {
-            await this.queueService.clearQueue(message.guild.name);
-            return message.channel.send('Cleared queue');
-        } else {
-            return message.reply('You must be in a voice channel to use notorious-music-bot');
-        }
+  private async prepareSong(
+    query: string,
+    message: Message,
+    server: Server,
+    track: TrackResponse
+  ): Promise<YoutubeOembedResponse> {
+    const url = await this.youtubeService.searchForSong(query);
+    const metadata = await this.getMetadata(url, message);
+    if (track) {
+      metadata.title = track.name;
+      metadata.song_link = track.external_urls.spotify;
+    } else {
+      metadata.song_link = url;
     }
+    server.queue.push(metadata);
+    return metadata;
+  }
 
-    async handleLeave(message: Message, server: Server): Promise<Message> {
-        if (message.member.voice.channel) {
-            server.dispatcher?.destroy();
-            server.connection?.disconnect();
-            server.isPlayingSong = false;
-            server.volume = 100;
-            this.queueService.clearQueue(message.guild.name);
-            return message.reply(`Leaving ${message.member.voice.channel.name}...`);
-        } else {
-            return message.reply('You must be in a voice channel to use notorious-music-bot');
-        }
-    }
+  private async getMetadata(url: string, message: Message): Promise<YoutubeOembedResponse> {
+    const metadata = (
+      await Axios.get<YoutubeOembedResponse>(`https://www.youtube.com/oembed`, {
+        params: { url, format: "json" },
+      })
+    ).data;
+    metadata.video_url = url;
+    metadata.added_by = message.author.id;
+    return metadata;
+  }
 
-    private scaleVolume(provided: number): number {
-        return (2.0 - 0.0) * (provided - 0.0) / (200 - 0) + 0; // formula for scaling from one range to another
-    }
+  private scaleVolume(provided: number): number {
+    return ((2.0 - 0.0) * (provided - 0.0)) / (200 - 0) + 0; // formula for scaling from one range to another
+  }
 
-    private tokenize(input: string): Array<string> {
-        return input.split(/[~ \t]/).slice(1);
-    }
+  private tokenize(input: string): Array<string> {
+    return input.split(/[~ \t]/).slice(1);
+  }
 
-    private sleep(ms: number) {
-        return new Promise((resolve) => {
-            setTimeout(resolve, ms);
-        })
-    }
+  private sleep(ms: number) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+  }
 }

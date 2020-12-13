@@ -43,7 +43,6 @@ export class YoutubeService {
 
         const dataLocation = html.split('var ytInitialData = ')[1];
         const data = JSON.parse(dataLocation.slice(0, dataLocation.indexOf('</script>') - 1));
-
         const results = data.contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents[0].itemSectionRenderer.contents;
         const videoIds = results.filter((result: any) => result.hasOwnProperty('videoRenderer')).map((result: any) => result.videoRenderer.videoId);
         return `https://youtube.com/watch?v=${videoIds[0]}`;
