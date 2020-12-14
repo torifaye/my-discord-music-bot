@@ -16,7 +16,7 @@ export class Server {
     
     constructor(name: string) {
         this.name = name;
-        this.volume = 100;
+        this.volume = 50;
         this.isPlayingSong = false;
         this.songIndex = 0;
         this.isLooping = false;

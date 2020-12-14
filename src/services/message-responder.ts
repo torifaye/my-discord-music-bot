@@ -91,7 +91,7 @@ export class MessageResponder {
         const response = new MessageEmbed()
           .setColor("#0099ff")
           .setTitle("Queue")
-          .addField("\u200b", before + current + after, true);
+          .setDescription(before + current + after);
         return message.channel.send(response);
       } else {
         return message.channel.send("No songs in queue!");
@@ -106,7 +106,7 @@ export class MessageResponder {
       const matches = this.volumeRegex.exec(message.content);
       if (server.dispatcher) {
         if (isNaN(parseFloat(matches[1]))) {
-          message.channel.send(`The current volume is **${server.volume}**`);
+          message.channel.send(`The current volume is **${server.volume}%**`);
         } else {
           const provided = parseInt(matches[1]);
           if (provided > 200 || provided < 0) {
@@ -182,7 +182,7 @@ export class MessageResponder {
       server.dispatcher?.destroy();
       server.connection?.disconnect();
       server.isPlayingSong = false;
-      server.volume = 100;
+      server.volume = 50;
       this.queueService.clearQueue(message.guild.name);
       await message.react("<:sadge:772667812790927400>");
     } else {
@@ -199,8 +199,8 @@ export class MessageResponder {
       this.playSong(message, server);
     } else {
       const response = new MessageEmbed()
-          .setColor("#0099ff")
-          .addField("\u200b", `Added [${metadata.title}](${metadata.song_link}) to queue [<@${metadata.added_by}>]`, true);
+        .setColor("#0099ff")
+        .setDescription(`Added [${metadata.title}](${metadata.song_link}) to queue [<@${metadata.added_by}>]`);
       return await message.channel.send(response);
     }
   }
@@ -214,7 +214,10 @@ export class MessageResponder {
         if (!server.isPlayingSong) {
           this.playSong(message, server);
         } else {
-          return await message.channel.send(`Added [${track.name}](${song.song_link}) to queue [<@${song.added_by}>]`);
+          const response = new MessageEmbed()
+            .setColor("#0099ff")
+            .setDescription(`Added [${track.name}](${song.song_link}) to queue [<@${song.added_by}>]`);
+          return await message.channel.send(response);
         }
         break;
       case "album":
@@ -252,13 +255,25 @@ export class MessageResponder {
     }
   }
 
+  private async handlePlainInput(args: string[], message: Message, server: Server): Promise<Message> {
+    const response = await this.prepareSong(args.join(" "), message, server, null);
+    if (!server.isPlayingSong) {
+      this.playSong(message, server);
+    } else {
+      const res = new MessageEmbed()
+        .setColor("#0099ff")
+        .setDescription(`Added [${response.title}](${response.song_link}) to queue [<@${message.author.id}>]`);
+      return await message.channel.send(res);
+    }
+  }
   private async playSong(message: Message, server: Server) {
     const currentSong = server.queue[server.songIndex];
     server.dispatcher = server.connection.play(ytdl(currentSong.video_url, { filter: "audioonly" }));
+    server.dispatcher.setVolume(0.5);
     const response = new MessageEmbed()
       .setColor("#ffffff")
       .setTitle("Now Playing")
-      .addField(`\u200b`, `[${currentSong.title}](${currentSong.song_link}) [<@${currentSong.added_by}>]`, true);
+      .setDescription(`[${currentSong.title}](${currentSong.song_link}) [<@${currentSong.added_by}>]`);
     await message.channel.send(response);
     server.isPlayingSong = true;
     server.dispatcher.on("finish", async () => {
@@ -278,16 +293,6 @@ export class MessageResponder {
       }
     });
   }
-
-  private async handlePlainInput(args: string[], message: Message, server: Server): Promise<Message> {
-    const response = await this.prepareSong(args.join(" "), message, server, null);
-    if (!server.isPlayingSong) {
-      this.playSong(message, server);
-    } else {
-      return await message.channel.send(`Added [${response.title}](${response.song_link}) to queue [<@${message.author.id}>]`);
-    }
-  }
-
   private async prepareSong(
     query: string,
     message: Message,
