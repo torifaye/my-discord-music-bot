@@ -12,7 +12,7 @@ import { YoutubeService } from "./youtube.service";
 @injectable()
 export class MessageResponder {
   private readonly urlRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/;
-  private readonly youtubeRegex = /(https:\/\/www.youtube.com\/watch\?v=.*|https:\/\/youtu.be\/.*)/;
+  private readonly youtubeRegex = /(https:\/\/www.youtube.com\/(watch\?v=.*|playlist\?list=.*)|https:\/\/youtu.be\/.*)/;
   private readonly spotifyRegex = /https:\/\/open.spotify.com\/(track|album|playlist)\/(.+)\?si=.+/;
   private readonly volumeRegex = /(?:[-+]?([0-9]*\.[0-9]+|[0-9]+)|show)/;
 
@@ -44,6 +44,8 @@ export class MessageResponder {
         return this.handleSkip(message, server);
       case "leave":
         return this.handleLeave(message, server);
+      case "avatar":
+        return this.handleAvatar(message, server);
       default:
         return;
     }
@@ -67,6 +69,7 @@ export class MessageResponder {
         } else {
           return this.handlePlainInput(args, message, server);
         }
+        console.log(`Server ${server.name}'s queue:  ${server.queue.map(song => `${song.title}\n`)}`);
       }
     } else {
       return message.reply("You must be in a voice channel to use notorious-music-bot");
@@ -187,6 +190,21 @@ export class MessageResponder {
       await message.react("<:sadge:772667812790927400>");
     } else {
       return message.reply("You must be in a voice channel to use notorious-music-bot");
+    }
+  }
+
+  private async handleAvatar(message: Message, server: Server): Promise<Message> {
+    if (message.mentions.users.size) {
+      const member = message.mentions.users.first();
+      if (member) {
+        const content = new MessageEmbed().setImage(member.displayAvatarURL()).setTitle(member.username);
+        return message.channel.send(content);
+      } else {
+        message.channel.send("No user found with that name, sorry <:sadge:772667812790927400>");
+      }
+    } else {
+      const content = new MessageEmbed().setImage(message.author.displayAvatarURL()).setTitle(message.author.username);
+      return message.channel.send(content);
     }
   }
 
@@ -327,7 +345,7 @@ export class MessageResponder {
   }
 
   private tokenize(input: string): Array<string> {
-    return input.split(/[~ \t]/).slice(1);
+    return input.split(/[; \t]/).slice(1);
   }
 
   private sleep(ms: number) {

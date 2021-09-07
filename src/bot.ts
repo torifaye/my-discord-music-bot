@@ -16,7 +16,7 @@ export class Bot {
         @inject(TYPES.GuildService) private guildService: GuildService
     ) {
         this.servers = new Map<string, Server>();
-        this.servers.set('Best Among Us Server', new Server('Best Among Us Server'));
+        this.servers.set('Best Discord Server, Maybe?', new Server('Best Discord Server, Maybe?'));
         this.servers.set('The Boys', new Server('The Boys'));
         this.servers.set('NotoriousPhD\'s test server', new Server('NotoriousPhD\'s test server'));
     }
